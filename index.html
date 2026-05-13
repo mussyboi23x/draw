@@ -1,129 +1,123 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Private Gartic</title>
+    <title>Google Docs</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #connection-screen, #lobby, #game { text-align: center; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #connect-gate, #lobby, #game { text-align: center; }
         #lobby, #game { display: none; }
-        canvas { background: white; border-radius: 8px; cursor: crosshair; margin-top: 10px; }
-        .chat-box { position: fixed; bottom: 10px; right: 10px; width: 260px; height: 300px; background: #222; border: 1px solid #444; display: flex; flex-direction: column; }
-        #msgs { flex: 1; overflow-y: auto; padding: 10px; text-align: left; font-size: 14px; }
-        input, button { padding: 10px; margin: 5px; border-radius: 4px; border: none; }
-        button { background: #00ffcc; font-weight: bold; cursor: pointer; }
+        canvas { background: white; border-radius: 4px; cursor: crosshair; margin-top: 15px; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        .chat { position: fixed; bottom: 15px; right: 15px; width: 250px; height: 300px; background: #252525; border: 1px solid #444; display: flex; flex-direction: column; border-radius: 8px; }
+        #msgs { flex: 1; overflow-y: auto; padding: 10px; text-align: left; font-size: 13px; }
+        input, button { padding: 12px; margin: 8px; border-radius: 6px; border: none; outline: none; }
+        input { background: #333; color: white; width: 200px; }
+        button { background: #4285f4; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #357ae8; }
     </style>
 </head>
 <body>
 
-    <!-- STAGE 1: CONNECT TO SERVER (The "Minecraft" Style Entry) -->
-    <div id="connection-screen">
-        <h1>Connect to Server</h1>
-        <input type="text" id="server-ip" placeholder="Server IP (e.g. 1.2.3.4)">
-        <input type="text" id="server-port" value="20100"><br>
-        <button onclick="connectToServer()">Connect</button>
+    <!-- STAGE 1: THE IP GATEWAY -->
+    <div id="connect-gate">
+        <h1>Draw!</h1>
+        <p style="color: #888;">Enter Server IP to begin</p>
+        <input type="text" id="target-ip" placeholder="0.0.0.0">
+        <button onclick="startConnection()">Connect</button>
     </div>
 
-    <!-- STAGE 2: LOBBY -->
+    <!-- STAGE 2: THE LOBBY -->
     <div id="lobby">
-        <h3 id="status" style="color: #00ffcc;">Connected!</h3>
-        <input type="text" id="p-name" placeholder="Your Name"><br>
-        <button onclick="host()">Host New Game</button>
-        <p>OR</p>
-        <input type="text" id="j-code" placeholder="4-Digit Code">
-        <button onclick="join()">Join Game</button>
+        <h1>Draw!</h1>
+        <input type="text" id="user-name" placeholder="Name"><br>
+        <button onclick="doHost()">Host Game</button>
+        <div style="margin: 20px 0; color: #555;">——— OR ———</div>
+        <input type="text" id="room-code" placeholder="4-Digit Code">
+        <button onclick="doJoin()">Join</button>
     </div>
 
-    <!-- STAGE 3: GAME -->
+    <!-- STAGE 3: THE GAME -->
     <div id="game">
-        <h2 id="room-id"></h2>
-        <canvas id="canvas" width="700" height="450"></canvas>
-        <div class="chat-box">
+        <h2 id="display-room" style="color: #4285f4;"></h2>
+        <canvas id="canvas" width="800" height="500"></canvas>
+        <div class="chat">
             <div id="msgs"></div>
-            <input type="text" id="c-in" placeholder="Chat..." onkeypress="if(event.key==='Enter') sendChat()">
+            <input type="text" id="chat-box" placeholder="Chat here..." onkeypress="if(event.key==='Enter') sendText()" style="width: 85%; margin: 5px auto;">
         </div>
     </div>
 
-    <!-- Socket.io library must be loaded from the server once connected, 
-         or via a CDN to ensure it's available before connection -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         let socket;
-        let myRoom = "";
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+        let activeRoom = "";
+        const cvs = document.getElementById('canvas');
+        const ctx = cvs.getContext('2d');
 
-        function connectToServer() {
-            const ip = document.getElementById('server-ip').value;
-            const port = document.getElementById('server-port').value;
-            
-            if(!ip) return alert("Enter an IP");
+        function startConnection() {
+            const ip = document.getElementById('target-ip').value;
+            if(!ip) return;
 
-            // Manually connecting to the typed IP
-            socket = io(`http://${ip}:${port}`);
+            socket = io(`http://${ip}:20100`);
 
             socket.on('connect', () => {
-                document.getElementById('connection-screen').style.display = 'none';
+                document.getElementById('connect-gate').style.display = 'none';
                 document.getElementById('lobby').style.display = 'block';
             });
 
-            socket.on('connect_error', () => {
-                alert("Failed to connect. Wrong IP or Server Offline.");
-            });
+            socket.on('connect_error', () => alert("Connection failed. Check IP."));
 
-            // Re-bind listeners after connection
-            setupSocketListeners();
-        }
-
-        function setupSocketListeners() {
-            socket.on('game-created', (c) => start(c));
-            socket.on('join-success', (c) => start(c));
+            socket.on('game-created', (c) => launch(c));
+            socket.on('join-success', (c) => launch(c));
             socket.on('error-msg', (m) => alert(m));
-            socket.on('drawing', (d) => draw(d.x, d.y));
+            socket.on('drawing', (d) => renderDraw(d.x, d.y));
             socket.on('receive-chat', (d) => {
-                document.getElementById('msgs').innerHTML += `<div><b>${d.name}:</b> ${d.msg}</div>`;
+                document.getElementById('msgs').innerHTML += `<div><b style="color:#4285f4">${d.name}:</b> ${d.msg}</div>`;
+                document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
             });
         }
 
-        function host() {
-            const n = document.getElementById('p-name').value;
+        function doHost() {
+            const n = document.getElementById('user-name').value;
             if(n) socket.emit('host-game', n);
         }
 
-        function join() {
-            const n = document.getElementById('p-name').value;
-            const c = document.getElementById('j-code').value;
+        function doJoin() {
+            const n = document.getElementById('user-name').value;
+            const c = document.getElementById('room-code').value;
             if(n && c) socket.emit('join-game', { name: n, code: c });
         }
 
-        function start(c) {
-            myRoom = c;
+        function launch(c) {
+            activeRoom = c;
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('game').style.display = 'block';
-            document.getElementById('room-id').innerText = "Room Code: " + c;
+            document.getElementById('display-room').innerText = "Code: " + c;
         }
 
-        // --- DRAWING LOGIC ---
-        canvas.onmousedown = () => { canvas.isDrawing = true; };
-        canvas.onmouseup = () => { canvas.isDrawing = false; ctx.beginPath(); };
-        canvas.onmousemove = (e) => {
-            if (!canvas.isDrawing) return;
-            const rect = canvas.getBoundingClientRect();
-            draw(e.clientX - rect.left, e.clientY - rect.top);
-            socket.emit('drawing', { x: e.clientX - rect.left, y: e.clientY - rect.top, room: myRoom });
+        // --- DRAW ENGINE ---
+        cvs.onmousedown = () => { cvs.down = true; };
+        cvs.onmouseup = () => { cvs.down = false; ctx.beginPath(); };
+        cvs.onmousemove = (e) => {
+            if (!cvs.down) return;
+            const r = cvs.getBoundingClientRect();
+            const x = e.clientX - r.left;
+            const y = e.clientY - r.top;
+            renderDraw(x, y);
+            socket.emit('drawing', { x, y, room: activeRoom });
         };
 
-        function draw(x, y) {
+        function renderDraw(x, y) {
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000';
             ctx.lineTo(x, y);
             ctx.stroke();
             ctx.beginPath();
             ctx.moveTo(x, y);
         }
 
-        function sendChat() {
-            const i = document.getElementById('c-in');
-            socket.emit('send-chat', { room: myRoom, msg: i.value });
+        function sendText() {
+            const i = document.getElementById('chat-box');
+            if(i.value) socket.emit('send-chat', { room: activeRoom, msg: i.value });
             i.value = "";
         }
     </script>
