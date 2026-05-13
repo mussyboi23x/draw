@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: white; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        #app-container { display: none; text-align: center; }
+        #game-area { display: none; }
+        canvas { background: white; border-radius: 5px; cursor: crosshair; }
+        .chat { position: fixed; bottom: 10px; right: 10px; width: 250px; height: 300px; background: #222; display: flex; flex-direction: column; border: 1px solid #444; }
+        #messages { flex: 1; overflow-y: auto; padding: 5px; font-size: 14px; text-align: left; }
+        input { padding: 8px; margin: 5px; }
+        button { padding: 8px 15px; cursor: pointer; background: #00ffcc; border: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <div id="lobby">
+            <h1>Gartic Phone (Private)</h1>
+            <input type="text" id="p-name" placeholder="Your Name"><br>
+            <button onclick="hostGame()">Host New Game</button>
+            <hr>
+            <input type="text" id="join-code" placeholder="Enter 4-Digit Code">
+            <button onclick="joinGame()">Join Game</button>
+        </div>
+
+        <div id="game-area">
+            <h2 id="display-code"></h2>
+            <canvas id="canvas" width="600" height="400"></canvas>
+            <div class="chat">
+                <div id="messages"></div>
+                <input type="text" id="chat-in" placeholder="Chat..." onkeypress="if(event.key==='Enter') sendChat()">
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // GATE 1: IP PASSWORD PROMPT
+        const SECRET_IP = "123.123.123.123"; // Replace with your actual home IP
+        const userEntry = prompt("Enter Server Access Code (IP):");
+
+        if (userEntry !== SECRET_IP) {
+            alert("Access Denied");
+            window.location.href = "https://google.com";
+        } else {
+            document.getElementById('app-container').style.display = 'block';
+        }
+
+        const socket = io();
+        let currentRoom = "";
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function hostGame() {
+            const name = document.getElementById('p-name').value;
+            if(!name) return alert("Enter Name");
+            socket.emit('host-game', name);
+        }
+
+        function joinGame() {
+            const name = document.getElementById('p-name').value;
+            const code = document.getElementById('join-code').value;
+            socket.emit('join-game', { name, code });
+        }
+
+        socket.on('game-created', (code) => setupGame(code));
+        socket.on('join-success', (code) => setupGame(code));
+        socket.on('error-msg', (msg) => alert(msg));
+
+        function setupGame(code) {
+            currentRoom = code;
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game-area').style.display = 'block';
+            document.getElementById('display-code').innerText = "Game Code: " + code;
+        }
+
+        // DRAWING & CHAT LOGIC
+        canvas.onmousedown = () => { canvas.drawing = true; };
+        canvas.onmouseup = () => { canvas.drawing = false; ctx.beginPath(); };
+        canvas.onmousemove = (e) => {
+            if (!canvas.drawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            draw(x, y);
+            socket.emit('drawing', { x, y, room: currentRoom });
+        };
+
+        function draw(x, y) {
+            ctx.lineWidth = 3;
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        socket.on('drawing', (data) => draw(data.x, data.y));
+
+        function sendChat() {
+            const msg = document.getElementById('chat-in').value;
+            socket.emit('send-chat', { room: currentRoom, msg });
+            document.getElementById('chat-in').value = "";
+        }
+
+        socket.on('receive-chat', (data) => {
+            document.getElementById('messages').innerHTML += `<div><b>${data.name}:</b> ${data.msg}</div>`;
+        });
+    </script>
+</body>
+</html>
