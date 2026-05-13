@@ -1,47 +1,67 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Google Docs</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #connect-gate, #lobby, #game { text-align: center; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        #connect-gate, #lobby, #game { text-align: center; width: 100%; max-width: 850px; }
         #lobby, #game { display: none; }
-        canvas { background: white; border-radius: 4px; cursor: crosshair; margin-top: 15px; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
-        .chat { position: fixed; bottom: 15px; right: 15px; width: 250px; height: 300px; background: #252525; border: 1px solid #444; display: flex; flex-direction: column; border-radius: 8px; }
+        
+        /* Canvas Setup */
+        canvas { 
+            background: white; 
+            border-radius: 4px; 
+            cursor: crosshair; 
+            margin-top: 10px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            touch-action: none; /* Prevents scrolling while drawing on mobile */
+            max-width: 95vw;
+        }
+
+        /* Chat Widget */
+        .chat { position: fixed; bottom: 15px; right: 15px; width: 250px; height: 300px; background: #252525; border: 1px solid #444; display: flex; flex-direction: column; border-radius: 8px; z-index: 100; }
         #msgs { flex: 1; overflow-y: auto; padding: 10px; text-align: left; font-size: 13px; }
-        input, button { padding: 12px; margin: 8px; border-radius: 6px; border: none; outline: none; }
-        input { background: #333; color: white; width: 200px; }
+        
+        /* Inputs & UI */
+        input, button { padding: 12px; margin: 8px; border-radius: 6px; border: none; outline: none; font-size: 16px; }
+        input { background: #333; color: white; border: 1px solid #444; }
         button { background: #4285f4; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #357ae8; }
+        .msg-line { margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px; }
     </style>
 </head>
 <body>
 
-    <!-- STAGE 1: THE IP GATEWAY -->
+    <!-- STAGE 1: CONNECTION GATE -->
     <div id="connect-gate">
         <h1>Draw!</h1>
-        <p style="color: #888;">Enter Server IP to begin</p>
-        <input type="text" id="target-ip" placeholder="0.0.0.0">
+        <p style="color: #888;">Enter Server IP (Port 20100)</p>
+        <input type="text" id="target-ip" placeholder="0.0.0.0" spellcheck="false">
         <button onclick="startConnection()">Connect</button>
     </div>
 
-    <!-- STAGE 2: THE LOBBY -->
+    <!-- STAGE 2: LOBBY -->
     <div id="lobby">
         <h1>Draw!</h1>
-        <input type="text" id="user-name" placeholder="Name"><br>
-        <button onclick="doHost()">Host Game</button>
-        <div style="margin: 20px 0; color: #555;">——— OR ———</div>
+        <input type="text" id="user-name" placeholder="Enter Username"><br>
+        <button onclick="doHost()">Host New Game</button>
+        <div style="margin: 15px 0; color: #555;">——— OR ———</div>
         <input type="text" id="room-code" placeholder="4-Digit Code">
-        <button onclick="doJoin()">Join</button>
+        <button onclick="doJoin()">Join Game</button>
     </div>
 
     <!-- STAGE 3: THE GAME -->
     <div id="game">
-        <h2 id="display-room" style="color: #4285f4;"></h2>
+        <h2 id="display-room" style="color: #4285f4; margin: 5px;"></h2>
         <canvas id="canvas" width="800" height="500"></canvas>
+        <div style="margin-top: 10px;">
+            <button onclick="ctx.clearRect(0,0,cvs.width,cvs.height)" style="background:#ff4444; padding: 8px;">Clear</button>
+        </div>
         <div class="chat">
             <div id="msgs"></div>
-            <input type="text" id="chat-box" placeholder="Chat here..." onkeypress="if(event.key==='Enter') sendText()" style="width: 85%; margin: 5px auto;">
+            <input type="text" id="chat-box" placeholder="Chat..." onkeypress="if(event.key==='Enter') sendText()">
         </div>
     </div>
 
@@ -63,15 +83,17 @@
                 document.getElementById('lobby').style.display = 'block';
             });
 
-            socket.on('connect_error', () => alert("Connection failed. Check IP."));
+            socket.on('connect_error', () => alert("Connection failed. Server offline or wrong IP."));
 
+            // Socket Listeners
             socket.on('game-created', (c) => launch(c));
             socket.on('join-success', (c) => launch(c));
             socket.on('error-msg', (m) => alert(m));
-            socket.on('drawing', (d) => renderDraw(d.x, d.y));
+            socket.on('drawing', (d) => renderDraw(d.x, d.y, false));
             socket.on('receive-chat', (d) => {
-                document.getElementById('msgs').innerHTML += `<div><b style="color:#4285f4">${d.name}:</b> ${d.msg}</div>`;
-                document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+                const msgs = document.getElementById('msgs');
+                msgs.innerHTML += `<div class="msg-line"><b style="color:#4285f4">${d.name}:</b> ${d.msg}</div>`;
+                msgs.scrollTop = msgs.scrollHeight;
             });
         }
 
@@ -93,19 +115,34 @@
             document.getElementById('display-room').innerText = "Code: " + c;
         }
 
-        // --- DRAW ENGINE ---
-        cvs.onmousedown = () => { cvs.down = true; };
-        cvs.onmouseup = () => { cvs.down = false; ctx.beginPath(); };
-        cvs.onmousemove = (e) => {
-            if (!cvs.down) return;
+        // --- TOUCH & MOUSE DRAW ENGINE ---
+        function getPos(e) {
             const r = cvs.getBoundingClientRect();
-            const x = e.clientX - r.left;
-            const y = e.clientY - r.top;
-            renderDraw(x, y);
-            socket.emit('drawing', { x, y, room: activeRoom });
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - r.left, y: clientY - r.top };
+        }
+
+        const startDraw = (e) => {
+            cvs.down = true;
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
         };
 
-        function renderDraw(x, y) {
+        const moveDraw = (e) => {
+            if (!cvs.down) return;
+            if (e.cancelable) e.preventDefault(); 
+            const pos = getPos(e);
+            renderDraw(pos.x, pos.y, true);
+        };
+
+        const stopDraw = () => {
+            cvs.down = false;
+            ctx.beginPath();
+        };
+
+        function renderDraw(x, y, isLocal) {
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
             ctx.strokeStyle = '#000';
@@ -113,7 +150,15 @@
             ctx.stroke();
             ctx.beginPath();
             ctx.moveTo(x, y);
+            if(isLocal) socket.emit('drawing', { x, y, room: activeRoom });
         }
+
+        cvs.addEventListener('mousedown', startDraw);
+        cvs.addEventListener('mousemove', moveDraw);
+        window.addEventListener('mouseup', stopDraw);
+        cvs.addEventListener('touchstart', startDraw);
+        cvs.addEventListener('touchmove', moveDraw);
+        cvs.addEventListener('touchend', stopDraw);
 
         function sendText() {
             const i = document.getElementById('chat-box');
