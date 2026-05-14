@@ -2,169 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Google Docs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickChat | Persistent</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
-        #connect-gate, #lobby, #game { text-align: center; width: 100%; max-width: 850px; }
-        #lobby, #game { display: none; }
+        :root { --primary: #007bff; --bg: #f4f7f6; --text: #333; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
         
-        /* Canvas Setup */
-        canvas { 
-            background: white; 
-            border-radius: 4px; 
-            cursor: crosshair; 
-            margin-top: 10px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            touch-action: none; /* Prevents scrolling while drawing on mobile */
-            max-width: 95vw;
-        }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .hidden { display: none !important; }
 
-        /* Chat Widget */
-        .chat { position: fixed; bottom: 15px; right: 15px; width: 250px; height: 300px; background: #252525; border: 1px solid #444; display: flex; flex-direction: column; border-radius: 8px; z-index: 100; }
-        #msgs { flex: 1; overflow-y: auto; padding: 10px; text-align: left; font-size: 13px; }
+        /* Login UI */
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
-        /* Inputs & UI */
-        input, button { padding: 12px; margin: 8px; border-radius: 6px; border: none; outline: none; font-size: 16px; }
-        input { background: #333; color: white; border: 1px solid #444; }
-        button { background: #4285f4; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #357ae8; }
-        .msg-line { margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+        /* Chat UI */
+        #chat-container { width: 95vw; max-width: 600px; height: 80vh; display: flex; flex-direction: column; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        .msg { padding: 10px 15px; border-radius: 18px; max-width: 70%; font-size: 14px; line-height: 1.4; }
+        .msg.me { align-self: flex-end; background: var(--primary); color: white; }
+        .msg.them { align-self: flex-start; background: #e9ecef; color: var(--text); }
+        
+        #input-area { display: flex; padding: 15px; border-top: 1px solid #eee; }
+        #input-area input { margin: 0 10px 0 0; }
+        #logout-btn { background: #dc3545; width: auto; padding: 5px 10px; font-size: 12px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <!-- STAGE 1: CONNECTION GATE -->
-    <div id="connect-gate">
-        <h1>Draw!</h1>
-        <p style="color: #888;">Enter Server IP (Port 20100)</p>
-        <input type="text" id="target-ip" placeholder="0.0.0.0" spellcheck="false">
-        <button onclick="startConnection()">Connect</button>
+    <div id="login-screen" class="card">
+        <h2>Welcome Back</h2>
+        <p style="color: #666; font-size: 14px;">Choose a handle to start chatting</p>
+        <input type="text" id="username-in" placeholder="Username...">
+        <button onclick="handleLogin()">Join Chat</button>
     </div>
 
-    <!-- STAGE 2: LOBBY -->
-    <div id="lobby">
-        <h1>Draw!</h1>
-        <input type="text" id="user-name" placeholder="Enter Username"><br>
-        <button onclick="doHost()">Host New Game</button>
-        <div style="margin: 15px 0; color: #555;">——— OR ———</div>
-        <input type="text" id="room-code" placeholder="4-Digit Code">
-        <button onclick="doJoin()">Join Game</button>
-    </div>
-
-    <!-- STAGE 3: THE GAME -->
-    <div id="game">
-        <h2 id="display-room" style="color: #4285f4; margin: 5px;"></h2>
-        <canvas id="canvas" width="800" height="500"></canvas>
-        <div style="margin-top: 10px;">
-            <button onclick="ctx.clearRect(0,0,cvs.width,cvs.height)" style="background:#ff4444; padding: 8px;">Clear</button>
-        </div>
-        <div class="chat">
-            <div id="msgs"></div>
-            <input type="text" id="chat-box" placeholder="Chat..." onkeypress="if(event.key==='Enter') sendText()">
+    <div id="chat-screen" class="hidden">
+        <div id="chat-container">
+            <div style="padding: 10px; background: #fff; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                <span id="user-display" style="font-weight: bold;"></span>
+                <button id="logout-btn" onclick="handleLogout()">Forget Me</button>
+            </div>
+            <div id="messages">
+                <div class="msg them">Hey! This chat will remember you next time you visit.</div>
+            </div>
+            <div id="input-area">
+                <input type="text" id="msg-in" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMsg()">
+                <button onclick="sendMsg()" style="width: auto;">Send</button>
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script>
-        let socket;
-        let activeRoom = "";
-        const cvs = document.getElementById('canvas');
-        const ctx = cvs.getContext('2d');
+<script>
+    const loginScreen = document.getElementById('login-screen');
+    const chatScreen = document.getElementById('chat-screen');
+    const usernameIn = document.getElementById('username-in');
+    const userDisplay = document.getElementById('user-display');
+    const msgBox = document.getElementById('messages');
+    const msgIn = document.getElementById('msg-in');
 
-        function startConnection() {
-            const ip = document.getElementById('target-ip').value;
-            if(!ip) return;
-
-            socket = io(`http://${ip}:20100`);
-
-            socket.on('connect', () => {
-                document.getElementById('connect-gate').style.display = 'none';
-                document.getElementById('lobby').style.display = 'block';
-            });
-
-            socket.on('connect_error', () => alert("Connection failed. Server offline or wrong IP."));
-
-            // Socket Listeners
-            socket.on('game-created', (c) => launch(c));
-            socket.on('join-success', (c) => launch(c));
-            socket.on('error-msg', (m) => alert(m));
-            socket.on('drawing', (d) => renderDraw(d.x, d.y, false));
-            socket.on('receive-chat', (d) => {
-                const msgs = document.getElementById('msgs');
-                msgs.innerHTML += `<div class="msg-line"><b style="color:#4285f4">${d.name}:</b> ${d.msg}</div>`;
-                msgs.scrollTop = msgs.scrollHeight;
-            });
+    // --- 1. PERSISTENCE CHECK ---
+    // This runs the moment the page loads
+    window.onload = () => {
+        const savedUser = localStorage.getItem('chat_username');
+        if (savedUser) {
+            enterChat(savedUser);
         }
+    };
 
-        function doHost() {
-            const n = document.getElementById('user-name').value;
-            if(n) socket.emit('host-game', n);
+    // --- 2. LOGIN LOGIC ---
+    function handleLogin() {
+        const name = usernameIn.value.trim();
+        if (name.length < 2) return alert("Pick a longer name!");
+        
+        // Save to device's "Site Data"
+        localStorage.setItem('chat_username', name);
+        enterChat(name);
+    }
+
+    function enterChat(name) {
+        loginScreen.classList.add('hidden');
+        chatScreen.classList.remove('hidden');
+        userDisplay.innerText = `Chatting as: ${name}`;
+    }
+
+    // --- 3. LOGOUT (CLEANUP) ---
+    function handleLogout() {
+        if(confirm("Are you sure? You'll have to type your name again next time.")) {
+            localStorage.removeItem('chat_username');
+            location.reload(); // Refresh to show login screen
         }
+    }
 
-        function doJoin() {
-            const n = document.getElementById('user-name').value;
-            const c = document.getElementById('room-code').value;
-            if(n && c) socket.emit('join-game', { name: n, code: c });
-        }
+    // --- 4. MOCK MESSAGING ---
+    function sendMsg() {
+        const text = msgIn.value.trim();
+        if (!text) return;
 
-        function launch(c) {
-            activeRoom = c;
-            document.getElementById('lobby').style.display = 'none';
-            document.getElementById('game').style.display = 'block';
-            document.getElementById('display-room').innerText = "Code: " + c;
-        }
+        // Add my message to UI
+        const el = document.createElement('div');
+        el.className = 'msg me';
+        el.innerText = text;
+        msgBox.appendChild(el);
 
-        // --- TOUCH & MOUSE DRAW ENGINE ---
-        function getPos(e) {
-            const r = cvs.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - r.left, y: clientY - r.top };
-        }
+        msgIn.value = "";
+        msgBox.scrollTop = msgBox.scrollHeight;
 
-        const startDraw = (e) => {
-            cvs.down = true;
-            const pos = getPos(e);
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-        };
-
-        const moveDraw = (e) => {
-            if (!cvs.down) return;
-            if (e.cancelable) e.preventDefault(); 
-            const pos = getPos(e);
-            renderDraw(pos.x, pos.y, true);
-        };
-
-        const stopDraw = () => {
-            cvs.down = false;
-            ctx.beginPath();
-        };
-
-        function renderDraw(x, y, isLocal) {
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000';
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            if(isLocal) socket.emit('drawing', { x, y, room: activeRoom });
-        }
-
-        cvs.addEventListener('mousedown', startDraw);
-        cvs.addEventListener('mousemove', moveDraw);
-        window.addEventListener('mouseup', stopDraw);
-        cvs.addEventListener('touchstart', startDraw);
-        cvs.addEventListener('touchmove', moveDraw);
-        cvs.addEventListener('touchend', stopDraw);
-
-        function sendText() {
-            const i = document.getElementById('chat-box');
-            if(i.value) socket.emit('send-chat', { room: activeRoom, msg: i.value });
-            i.value = "";
-        }
-    </script>
+        // Auto-reply (Simulating a friend)
+        setTimeout(() => {
+            const reply = document.createElement('div');
+            reply.className = 'msg them';
+            reply.innerText = "Received! If you refresh this page, you'll still be logged in.";
+            msgBox.appendChild(reply);
+            msgBox.scrollTop = msgBox.scrollHeight;
+        }, 1000);
+    }
+</script>
 </body>
 </html>
